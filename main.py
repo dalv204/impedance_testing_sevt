@@ -102,19 +102,45 @@ def data_valid(data, lower_bound, upper_bound):
     """ checks if the data is within the necessary bounds """
     return (data>lower_bound) and (data<upper_bound)
 
+def read_packet(ser):
+    # buf = ser.read(19)
+    # if len(buf)!=19:
+    #     return None
+    # if buf[0]!=0xFA:
+    #     return None
+    # # checksum = sum(buf[:-1])&0xFF
+    # if buf[-1]!=0xF8:
+    #     return None
+    # return 
+    while True:
+        b = ser.read(1)
+        if not b:
+            return None
+        if b[0]==0xFA:
+            # got the head, now continue
+            frame = b + ser.read(18)
+            if len(frame)!=19:
+                continue
+            if frame[-1]==0xF8:
+                return frame
+
 def run_test(test_message, test_current):
     """ should return the values we seek """
+    
     voltage_reading=0.00
     resistance_value = 0.00
     time.sleep(0.001)
     while True:
-        if ser.in_waiting:
-            raw_voltage=ser.read(ser.in_waiting)
-            voltage_reading = get_voltage(raw_voltage)
-            print(f"{voltage_reading=}")
-            break
+        packet = read_packet(ser)
+        if packet is None:
+            # print("~~~'< 😒 ")
+            time.sleep(0.001)
+            continue
+        voltage_reading = get_voltage(packet)
+        break
+
     ser.reset_input_buffer()
-    time.sleep(0.001)
+    # ser.flushInput()
     # ser.reset_output_buffer()
 
     written_data = ser.write(test_message)
@@ -123,13 +149,17 @@ def run_test(test_message, test_current):
     # receiving sooner than I had expected to receive :(
 
     while True:
-        if ser.in_waiting:
-            data = ser.read(ser.in_waiting)
-            print(data)
-            break
-        time.sleep(0.001)
-    resistance_value = get_resistance(data, test_current)
-    print(resistance_value)
+        packet=read_packet(ser)
+        if packet is None:
+            # print("😍😍\n")
+            time.sleep(0.001)
+            continue
+        resistance_value = get_resistance(packet, test_current)
+        # print(f"{resistance_value=}")
+        break
+
+    print(Fore.YELLOW + Style.BRIGHT + f".")
+    
     
     return (voltage_reading, resistance_value)
             
@@ -153,7 +183,7 @@ def collect_data(test_current):
             time.sleep(debounce_time) # adjust for how long it takes for voltage to recover
             if test_count>1:
                 print("redoing test... \n")
-            elif test_count>=3: 
+            elif test_count>=3:  # not accessed rn 
                 print(Fore.RED + Style.BRIGHT + " \n----- Test FAILED... aborting, check connection & try again ----- \n")
                 raise KeyboardInterrupt
             test_count+=1
@@ -191,8 +221,11 @@ try:
 
         collected_data = collect_data(TEST_CURRENT)
 
+        print("------------------------------------------------\n")
         for index in range(num_tests):
             print(f"Resistance {index+1}: {collected_data[index]}\n")
+        print("------------------------------------------------\n")
+        
         
         user_input = input(Fore.YELLOW + Style.BRIGHT + "Press ENTER to verify data, or 'R' to retest\n")
         if user_input.strip().lower() == 'r':
