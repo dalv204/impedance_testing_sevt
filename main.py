@@ -113,6 +113,8 @@ def run_test(test_message, test_current):
     ser.reset_input_buffer()
     written_data = ser.write(test_message)
     ser.reset_input_buffer() # ************************************************* could be the issue in our code...
+    # believe this may be causing some of our data to return with null values, I may be accidentally clearing data that I am 
+    # receiving sooner than I had expected to receive :(
 
     while True:
         if ser.in_waiting:
