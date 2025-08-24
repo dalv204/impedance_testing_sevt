@@ -9,17 +9,10 @@ import datetime
 import colorama as clr
 from colorama import Fore, Style
 
-
-# seems to be a shutdown code to the device
-
 # we need to send an initialization message!
-
-# fa 06 00 00 00 00 00 00 06 f8
 
 init_message = 0xfa0500000000000005f8 
 close_message = 0xfa0600000000000006f8
-
-# INSTALL COMMAND: pip install gspread pyserial colorama
 
 # google sheet: https://docs.google.com/spreadsheets/d/1mdjazOoiNfkSh2w03e4G9gWg25xuktNSD1W5mzzhZc4/edit?usp=sharing
 
@@ -30,6 +23,8 @@ close_message = 0xfa0600000000000006f8
 run_flag=True 
 increment_loc=0
 clr.init(autoreset=True)
+mR_upper_bound = 40.0
+mR_lower_bound = 0.0
 
 # --------------------------------------------------------------------------------
 
@@ -103,6 +98,33 @@ def get_resistance(data, current):
     current_resistance = float(current_msg) / float(current)
     return current_resistance
 
+def data_not_valid(data, lower_bound, upper_bound):
+    """ checks if the data is within the necessary bounds """
+    return (data>lower_bound) and (data<upper_bound)
+
+def run_test(test_message, test_current):
+    """ should return the values we seek """
+    voltage_reading=0.00
+    resistance_value = 0.00
+    while True:
+        if ser.in_waiting:
+            voltage_reading=ser.read(ser.in_waiting)
+            break
+    ser.reset_input_buffer()
+    written_data = ser.write(test_message)
+    ser.reset_input_buffer() # ************************************************* could be the issue in our code...
+
+    while True:
+        if ser.in_waiting:
+            data = ser.read(ser.in_waiting)
+            print(data)
+            break
+        time.sleep(0.001)
+        resistance_value = get_resistance(data, test_current)
+    
+    return (voltage_reading, resistance_value)
+            
+
 
 def collect_data(test_current):
     """returns a list of 5 data points, all """
@@ -114,27 +136,18 @@ def collect_data(test_current):
     test_message = test_write_messages[test_current-1]
     format_test_message = test_message.to_bytes(10, byteorder='big')
     for test_number in range(num_tests):
-        while True:
-            if ser.in_waiting:
-                voltage_reading=ser.read(ser.in_waiting)
-                voltage_list[test_number] = get_voltage(voltage_reading)
-                break
+        test_count=0
+        while data_not_valid(data_list[test_number], lower_bound=mR_lower_bound, upper_bound=mR_upper_bound):
+            
+            voltage_list[test_number], data_list[test_number] = run_test(test_message=format_test_message, test_current=test_current)
 
-
-        ser.reset_input_buffer()
-        written_data=ser.write(format_test_message)
-        ser.reset_input_buffer()
-
-        while True:
-            # let's wait for a message
-            if ser.in_waiting:
-                data = ser.read(ser.in_waiting)
-                print(data)
-                break
-            time.sleep(0.001)
-        
-        data_list[test_number] = get_resistance(data, test_current)
-        time.sleep(debounce_time) # adjust for how long it takes for voltage to recover
+            time.sleep(debounce_time) # adjust for how long it takes for voltage to recover
+            if test_count>1:
+                print("redoing test... \n")
+            elif test_count>=3: 
+                print(Fore.RED + Style.BRIGHT + " \n----- Test FAILED... aborting, check connection & try again ----- \n")
+                raise KeyboardInterrupt
+            test_count+=1
 
  
     for index, value in enumerate(voltage_list):
@@ -182,6 +195,7 @@ try:
         custom_loc = f'A{pos}:I{pos}'
         wks.update([[pos]+collected_data], custom_loc)
         increment_loc+=1
+
 except KeyboardInterrupt:
     format_close_message = close_message.to_bytes(10, byteorder='big')
     ser.write(format_close_message)
