@@ -21,7 +21,7 @@ close_message = 0xfa0600000000000006f8
 # Settings for running program ---------------------------------------------------
 
 run_flag=True 
-increment_loc=0
+increment_loc=1
 clr.init(autoreset=True)
 mR_upper_bound = 40.0
 mR_lower_bound = 0.0
@@ -38,7 +38,7 @@ wks = sh.worksheet("raw_impedance")
 def find_next_id():
     """returns the next id for the cell test"""
     values_list = wks.col_values(1)
-    print(values_list)
+    # print(values_list)
     # only returns filled values
     return len(values_list)
 # --------------------------------------------------------------------------------
@@ -75,9 +75,9 @@ time.sleep(1)
 if ser.in_waiting:
     ser.read(ser.in_waiting)
 
-print("was it printed?")
 
-debounce_time = 3 # seconds
+
+debounce_time = 2 # seconds
 num_tests = 5
 # start_byte = 0xfa
 # end_byte = 0xf8
@@ -98,7 +98,7 @@ def get_resistance(data, current):
     current_resistance = float(current_msg) / float(current)
     return current_resistance
 
-def data_not_valid(data, lower_bound, upper_bound):
+def data_valid(data, lower_bound, upper_bound):
     """ checks if the data is within the necessary bounds """
     return (data>lower_bound) and (data<upper_bound)
 
@@ -106,13 +106,19 @@ def run_test(test_message, test_current):
     """ should return the values we seek """
     voltage_reading=0.00
     resistance_value = 0.00
+    time.sleep(0.001)
     while True:
         if ser.in_waiting:
-            voltage_reading=ser.read(ser.in_waiting)
+            raw_voltage=ser.read(ser.in_waiting)
+            voltage_reading = get_voltage(raw_voltage)
+            print(f"{voltage_reading=}")
             break
     ser.reset_input_buffer()
+    time.sleep(0.001)
+    # ser.reset_output_buffer()
+
     written_data = ser.write(test_message)
-    ser.reset_input_buffer() # ************************************************* could be the issue in our code...
+    # ser.reset_input_buffer() # ************************************************* could be the issue in our code...
     # believe this may be causing some of our data to return with null values, I may be accidentally clearing data that I am 
     # receiving sooner than I had expected to receive :(
 
@@ -122,7 +128,8 @@ def run_test(test_message, test_current):
             print(data)
             break
         time.sleep(0.001)
-        resistance_value = get_resistance(data, test_current)
+    resistance_value = get_resistance(data, test_current)
+    print(resistance_value)
     
     return (voltage_reading, resistance_value)
             
@@ -139,7 +146,7 @@ def collect_data(test_current):
     format_test_message = test_message.to_bytes(10, byteorder='big')
     for test_number in range(num_tests):
         test_count=0
-        while data_not_valid(data_list[test_number], lower_bound=mR_lower_bound, upper_bound=mR_upper_bound):
+        while not data_valid(data_list[test_number], lower_bound=mR_lower_bound, upper_bound=mR_upper_bound):
             
             voltage_list[test_number], data_list[test_number] = run_test(test_message=format_test_message, test_current=test_current)
 
@@ -165,13 +172,13 @@ def collect_data(test_current):
 
 
 starting_ID = find_next_id() 
-print(starting_ID)
+# print(starting_ID)
 
 
 # wks.update([[1, 2], [3, 4]], 'A1:B2')
 try:
     while run_flag:
-        print(Fore.GREEN + Style.BRIGHT + f"TESTING CELL #{starting_ID+increment_loc}")
+        print(Fore.GREEN + Style.BRIGHT + f"TESTING CELL #{starting_ID+increment_loc-1}")
         user_input = input(Fore.YELLOW + Style.BRIGHT + "Press ENTER to test, or Q to quit\n")
 
         if user_input=="":
@@ -185,7 +192,7 @@ try:
         collected_data = collect_data(TEST_CURRENT)
 
         for index in range(num_tests):
-            print(f"Resistance {index}: {collected_data[index]}\n")
+            print(f"Resistance {index+1}: {collected_data[index]}\n")
         
         user_input = input(Fore.YELLOW + Style.BRIGHT + "Press ENTER to verify data, or 'R' to retest\n")
         if user_input.strip().lower() == 'r':
@@ -193,9 +200,9 @@ try:
         # print("Saving...\n")
         pos = starting_ID + increment_loc
         # added the round feature to make writing easier
-        print(Fore.RED + Style.BRIGHT + f"CELL # {pos} : {round(collected_data[5],1)}mR \n\n")
+        print(Fore.RED + Style.BRIGHT + f"\t\t\t\tCELL # {pos-1} : {round(collected_data[5],1)} mR \n\n")
         custom_loc = f'A{pos}:I{pos}'
-        wks.update([[pos]+collected_data], custom_loc)
+        wks.update([[pos-1]+collected_data], custom_loc)
         increment_loc+=1
 
 except KeyboardInterrupt:
