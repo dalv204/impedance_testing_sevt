@@ -25,11 +25,6 @@ close_message = 0xfa0600000000000006f8
 
 # recommend having this sheet open! :) ^^
 
-
-# 791 15/08/2025 14:43:14 IRP_MJ_WRITE UP STATUS_SUCCESS fa 05 00 00 00 00 00 00 05 f8  ú........ø 10  COM6  
-# 842 15/08/2025 14:44:16 IRP_MJ_WRITE UP STATUS_SUCCESS fa 05 00 00 00 00 00 00 05 f8  ú........ø 10  COM6  
-
-
 # Settings for running program ---------------------------------------------------
 
 run_flag=True 
