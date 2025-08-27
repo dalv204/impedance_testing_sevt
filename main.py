@@ -10,6 +10,7 @@ import colorama as clr
 from colorama import Fore, Style
 
 # we need to send an initialization message!
+verbose = True
 
 init_message = 0xfa0500000000000005f8 
 close_message = 0xfa0600000000000006f8
@@ -24,7 +25,7 @@ run_flag=True
 increment_loc=1
 clr.init(autoreset=True)
 mR_upper_bound = 40.0
-mR_lower_bound = 0.0
+mR_lower_bound = 10.0
 
 # --------------------------------------------------------------------------------
 
@@ -46,19 +47,30 @@ def find_next_id():
 # SETTINGS FOR SERIAL  -----------------------------------------------------------
 PORT = "COM5"
 BAUDRATE=9600
-ser = serial.Serial(PORT, BAUDRATE, bytesize=serial.EIGHTBITS,
-                    parity=serial.PARITY_EVEN,
-                    stopbits=serial.STOPBITS_ONE,
-                    timeout=2,
-                    xonxoff=True,
-                    rtscts=False,
-                    dsrdtr=False)
-ser.dtr=True
-ser.rts=True
-ser.reset_input_buffer()
-ser.reset_output_buffer()
-time.sleep(0.1)
-ser.flush() 
+
+# def setup_serial():
+#     """ func to setup serial"""
+
+def make_connection():
+    """ func to return connection"""
+    ser1 = serial.Serial(PORT, BAUDRATE, bytesize=serial.EIGHTBITS,
+                        parity=serial.PARITY_EVEN,
+                        stopbits=serial.STOPBITS_ONE,
+                        timeout=2,
+                        xonxoff=True,
+                        rtscts=False,
+                        dsrdtr=False,
+                        write_timeout=0.5)
+    ser1.dtr=True
+    ser1.rts=True
+    ser1.reset_input_buffer()
+    ser1.reset_output_buffer()
+    return ser1
+global ser
+ser = make_connection()
+time.sleep(2)
+    # return ser
+# ser = setup_serial()
 
 
 
@@ -77,7 +89,7 @@ if ser.in_waiting:
 
 
 
-debounce_time = 2 # seconds
+debounce_time = 3 # seconds
 num_tests = 5
 # start_byte = 0xfa
 # end_byte = 0xf8
@@ -100,19 +112,23 @@ def get_resistance(data, current):
 
 def data_valid(data, lower_bound, upper_bound):
     """ checks if the data is within the necessary bounds """
+    if verbose: print(f"validity check: {(data>lower_bound) and (data<upper_bound)}")
     return (data>lower_bound) and (data<upper_bound)
 
-def read_packet(ser):
-    # buf = ser.read(19)
-    # if len(buf)!=19:
-    #     return None
-    # if buf[0]!=0xFA:
-    #     return None
-    # # checksum = sum(buf[:-1])&0xFF
-    # if buf[-1]!=0xF8:
-    #     return None
-    # return 
+
+def read_packet(ser): 
+    counter=0 
+    # counter should go max 19, 
+    # before it closes serial and reopens it
     while True:
+        counter+=1
+        if counter>=19:
+            print("ATTEMPTING TO FIX BOOGY")
+            ser.reset_input_buffer()
+            ser.flush() 
+            time.sleep(0.1)
+            counter=0
+        if verbose: print("stuck reading")
         b = ser.read(1)
         if not b:
             return None
@@ -122,45 +138,71 @@ def read_packet(ser):
             if len(frame)!=19:
                 continue
             if frame[-1]==0xF8:
+                print("frame is good now")
                 return frame
+            else: 
+                if verbose: print(f"frame check ended in {frame[-1]=}")
 
 def run_test(test_message, test_current):
     """ should return the values we seek """
+    global ser
     
     voltage_reading=0.00
     resistance_value = 0.00
     time.sleep(0.001)
     while True:
+        if verbose: print("getting voltage")
         packet = read_packet(ser)
         if packet is None:
+            if verbose: print("packet is NOTHING")
             # print("~~~'< 😒 ")
             time.sleep(0.001)
             continue
         voltage_reading = get_voltage(packet)
         break
 
+
     ser.reset_input_buffer()
     # ser.flushInput()
-    # ser.reset_output_buffer()
+    ser.reset_output_buffer()
+    time.sleep(0.002)
+    if verbose: print("PEP ... ")
 
-    written_data = ser.write(test_message)
+    try:
+        ser.write(test_message)
+        # ser.flush()
+    except serial.SerialTimeoutException:
+        print(Fore.RED + Style.BRIGHT + "RECONNECT ASAP !!!!!")
+        
+        ser.close()
+        time.sleep(5)
+        ser=make_connection()
+        return (0.0,0.0)
+        
+
+    if verbose: print("wrote the value")
     # ser.reset_input_buffer() # ************************************************* could be the issue in our code...
     # believe this may be causing some of our data to return with null values, I may be accidentally clearing data that I am 
     # receiving sooner than I had expected to receive :(
 
     while True:
+        if verbose: print("getting resistance")
+        
         packet=read_packet(ser)
+        print(f"packet not done {packet}")
         if packet is None:
+            if verbose: print("resistance is None")
+
             # print("😍😍\n")
             time.sleep(0.001)
             continue
         resistance_value = get_resistance(packet, test_current)
         # print(f"{resistance_value=}")
         break
-
+    print(f"packet good {packet}") 
     print(Fore.YELLOW + Style.BRIGHT + f".")
     
-    
+    if verbose: print(f"{(voltage_reading, resistance_value)=}")
     return (voltage_reading, resistance_value)
             
 
@@ -177,7 +219,7 @@ def collect_data(test_current):
     for test_number in range(num_tests):
         test_count=0
         while not data_valid(data_list[test_number], lower_bound=mR_lower_bound, upper_bound=mR_upper_bound):
-            
+            if verbose: print(f"{test_count=}")
             voltage_list[test_number], data_list[test_number] = run_test(test_message=format_test_message, test_current=test_current)
 
             time.sleep(debounce_time) # adjust for how long it takes for voltage to recover
@@ -198,6 +240,14 @@ def collect_data(test_current):
     # send to review and see if should be written?
     return data_list # returns data with 5 points, average in 6, voltage average in 7, and date in 8
 
+
+def graceful_exit(closing_message):
+    print(Fore.RED + Style.BRIGHT + "Quitting...")
+
+    format_close_message = closing_message.to_bytes(10, byteorder='big')
+    ser.write(format_close_message)
+    ser.close()
+
 # --------------------------------------------------------------------------------
 
 
@@ -209,13 +259,14 @@ starting_ID = find_next_id()
 try:
     while run_flag:
         print(Fore.GREEN + Style.BRIGHT + f"TESTING CELL #{starting_ID+increment_loc-1}")
-        user_input = input(Fore.YELLOW + Style.BRIGHT + "Press ENTER to test, or Q to quit\n")
-
+        try:
+            user_input = input(Fore.YELLOW + Style.BRIGHT + "Press ENTER to test, or Q to quit\n")
+        except KeyboardInterrupt:
+            graceful_exit(close_message)
         if user_input=="":
             print(Fore.GREEN + Style.BRIGHT + "TESTING...")
         elif user_input.strip().lower()=="q":
-            print(Fore.RED + Style.BRIGHT + "Quitting...")
-            ser.close()
+            graceful_exit(close_message)
             run_flag=False
             break
 
@@ -239,9 +290,8 @@ try:
         increment_loc+=1
 
 except KeyboardInterrupt:
-    format_close_message = close_message.to_bytes(10, byteorder='big')
-    ser.write(format_close_message)
-    ser.close()
+    graceful_exit(close_message)
+
     
 
 
