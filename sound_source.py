@@ -46,11 +46,9 @@ class AlarmPlayer:
         if self.thread:
             self.thread.join()
 
-    def chirp(self, chirp_dur=0.2, reps=2):
+    def chirp(self, freq=650.0, chirp_dur=0.2, reps=2):
         """ does a nice little chirp """
-        chirp_dur = 0.2
         wait_time = 0.1
-        freq = 650.0
         volume=0.5
 
         t = np.linspace(0, chirp_dur, int(self.sample_rate*chirp_dur), endpoint=False)
@@ -74,13 +72,13 @@ class AlarmPlayer:
         self.pa.terminate()
 
 
-# calling alarm should capture its instance 
+# # calling alarm should capture its instance 
 
-alarm_player = AlarmPlayer()
-# alarm_player.alarm()
-# while True:
-#     print('hah')
-alarm_player.chirp()
+# alarm_player = AlarmPlayer()
+# # alarm_player.alarm()
+# # while True:
+# #     print('hah')
+# alarm_player.chirp()
 
-# time.sleep(.4)
-# alarm_player.cancel()
+# # time.sleep(.4)
+# # alarm_player.cancel()

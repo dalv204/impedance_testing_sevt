@@ -11,7 +11,7 @@ from colorama import Fore, Style
 from sound_source import AlarmPlayer
 
 # we need to send an initialization message!
-verbose = True
+verbose = False 
 
 init_message = 0xfa0500000000000005f8 
 close_message = 0xfa0600000000000006f8
@@ -130,12 +130,12 @@ def read_packet(ser):
     while True:
         counter+=1
         if counter>=19:
-            print("ATTEMPTING TO FIX BOOGY")
+            # print("ATTEMPTING TO FIX BOOGY")
             ser.reset_input_buffer()
             ser.flush() 
             time.sleep(0.1)
             counter=0
-        if verbose: print("stuck reading")
+        if verbose: print("parsing ..")
         b = ser.read(1)
         if not b:
             return None
@@ -145,7 +145,7 @@ def read_packet(ser):
             if len(frame)!=19:
                 continue
             if frame[-1]==0xF8:
-                print("frame is good now")
+                # print("frame is good now")
                 return frame
             else: 
                 if verbose: print(f"frame check ended in {frame[-1]=}")
@@ -169,7 +169,9 @@ def run_test(test_message, test_current):
         break
     if voltage_reading<1.0:
         # not good!!!!
-        alarm_player.chirp(reps=7)
+        alarm_player.chirp(freq=850, reps=7)
+        input(Fore.RED + Style.BRIGHT + "press enter when cell is placed CORRECTLY (check polarity)")
+        return (0.0, 0.0)
 
 
     ser.reset_input_buffer()
@@ -214,7 +216,7 @@ def run_test(test_message, test_current):
     print(f"packet good {packet}") 
     print(Fore.YELLOW + Style.BRIGHT + f".")
     
-    if verbose: print(f"{(voltage_reading, resistance_value)=}")
+    print(f"{(voltage_reading, resistance_value)=}")
     return (voltage_reading, resistance_value)
             
 
