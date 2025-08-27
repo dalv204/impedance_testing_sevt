@@ -8,6 +8,7 @@ import time
 import datetime
 import colorama as clr
 from colorama import Fore, Style
+from sound_source import AlarmPlayer
 
 # we need to send an initialization message!
 verbose = True
@@ -87,12 +88,18 @@ time.sleep(1)
 if ser.in_waiting:
     ser.read(ser.in_waiting)
 
-
-
 debounce_time = 3 # seconds
 num_tests = 5
-# start_byte = 0xfa
-# end_byte = 0xf8
+
+# -----------------------------------------------------------------------------
+
+
+# SOUND CONTROL ---------------------------------------------------------------
+alarm_player = AlarmPlayer()
+
+# -----------------------------------------------------------------------------
+
+
 
 
 def get_voltage(data):
@@ -160,6 +167,9 @@ def run_test(test_message, test_current):
             continue
         voltage_reading = get_voltage(packet)
         break
+    if voltage_reading<1.0:
+        # not good!!!!
+        alarm_player.chirp(reps=7)
 
 
     ser.reset_input_buffer()
@@ -169,7 +179,9 @@ def run_test(test_message, test_current):
     if verbose: print("PEP ... ")
 
     try:
+        alarm_player.alarm()
         ser.write(test_message)
+        alarm_player.cancel() # should not sound if written correctly
         # ser.flush()
     except serial.SerialTimeoutException:
         print(Fore.RED + Style.BRIGHT + "RECONNECT ASAP !!!!!")
@@ -271,6 +283,7 @@ try:
             break
 
         collected_data = collect_data(TEST_CURRENT)
+        alarm_player.chirp() # chirp, boy!
 
         print("------------------------------------------------\n")
         for index in range(num_tests):
